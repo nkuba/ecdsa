@@ -58,6 +58,37 @@ func Sign(curve *secp256k1.BitCurve, privateKey *big.Int, message []byte) (*Sign
 	return &Signature{R: r, S: s}, nil
 }
 
+func Verify(curve *secp256k1.BitCurve, signature *Signature, publicKey *Point, message []byte) bool {
+	if signature.R.Cmp(big.NewInt(0)) <= 0 || signature.R.Cmp(curve.N) >= 0 {
+		return false
+	}
+
+	if signature.S.Cmp(big.NewInt(0)) <= 0 || signature.S.Cmp(curve.N) >= 0 {
+		return false
+	}
+
+	hash := sha256.Sum256(message)
+	z := new(big.Int).SetBytes(hash[:])
+
+	u1 := new(big.Int).Mod(
+		new(big.Int).Mul(new(big.Int).ModInverse(signature.S, curve.N), z),
+		curve.N,
+	)
+
+	u2 := new(big.Int).Mod(
+		new(big.Int).Mul(new(big.Int).ModInverse(signature.S, curve.N), signature.R),
+		curve.N)
+
+	u1gX, u1gY := curve.ScalarBaseMult(u1.Bytes())
+	u2PX, u2Py := curve.ScalarMult(publicKey.X, publicKey.Y, u2.Bytes())
+	Px, _ := curve.Add(u1gX, u1gY, u2PX, u2Py)
+
+	if Px.Cmp(signature.R) != 0 {
+		return false
+	}
+	return true
+}
+
 func hashAndTrim(message []byte, bitLen int) *big.Int {
 	hash := sha256.Sum256(message)
 	return new(big.Int).SetBytes(hash[:bitLen/8])
